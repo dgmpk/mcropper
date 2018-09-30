@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0,initial-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="renderer" content="webkit">
+    <title>test</title>
+    <style media="screen">
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .page,
+      #container,
+      #preview {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+      }
+      .page {
+        display: flex;
+        flex-direction: column;
+        background: white;
+      }
+      .page__header {
+        height: 44px;
+        background: #333;
+      }
+      .page__body {
+        position: relative;
+        flex: 1;
+        overflow: hidden;
+      }
+      #container {
+        display: none;
+        z-index: 99;
+        background-image: url('./bg.png')
+      }
+      #preview {
+        margin: auto;
+        max-width: 100%;
+        max-height: 100%;
+      }
+      .btn {
+        float: left;
+        display: block;
+        padding: 0 20px;
+        line-height: 44px;
+        color: white;
+        cursor: pointer;
+      }
+      #confirm {
+        display: none;
+        float: right;
+      }
+    </style>
+  </head>
+  <body class="page">
+    <header class="page__header">
+      <label class="btn">选择图片<input id="fileInput" type="file" accept="image/*" hidden></label>
+      <span class="btn" id="confirm">裁剪</span>
+    </header>
+    <div class="page__body">
+      <img id="preview" src="" alt="">
+      <div id="container"></div>
+    </div>
+    <script src="./alloy_finger.js" charset="utf-8"></script>
+    <script src="./mcropper.js" charset="utf-8"></script>
+    <script type="text/javascript">
+      var fileInput = document.getElementById('fileInput')
+      var confirm = document.getElementById('confirm')
+      var preview = document.getElementById('preview')
+      var container = document.getElementById('container')
+      fileInput.addEventListener('change', function () {
+        var src = window.URL.createObjectURL(this.files[0])
+        fileInput.value = '' // clear file
+        container.style.display = 'block'
+        new MCropper(container, src, {
+          onReady: function (cropper) {
+            confirm.addEventListener('click', crop)
+            confirm.style.display = 'block'
+            function crop () {
+              // cropper.crop().toBlob(function (blob) {
+              //   preview.src = window.URL.createObjectURL(blob)
+              // }, 'image/jpeg', 0.9)
+              preview.src = cropper.crop().toDataURL('image/jpeg')
+              container.style.display = 'none'
+              confirm.removeEventListener('click', crop)
+              cropper.destroy()
+            }
+          }
+        })
+      })
+    </script>
+  </body>
+</html>

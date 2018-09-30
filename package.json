@@ -1,0 +1,48 @@
+{
+  "name": "mcropper",
+  "version": "1.0.0",
+  "description": "image cropper for mobile",
+  "main": "dist/mcropper.common.js",
+  "module": "dist/mcropper.esm.js",
+  "unpkg": "dist/mcropper.js",
+  "scripts": {
+    "build": "rollup -c",
+    "compress": "uglifyjs dist/mcropper.js -o dist/mcropper.min.js -c -m --comments /^!/",
+    "release": "npm run build && npm run compress",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dgmpk/mcropper.git"
+  },
+  "files": [
+    "dist/*.js",
+    "bg.png"
+  ],
+  "keywords": [
+    "crop",
+    "cropper",
+    "image",
+    "mobile",
+    "javascript",
+    "html",
+    "web",
+    "avatar",
+    "canvas"
+  ],
+  "author": "dgmpk",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dgmpk/mcropper/issues"
+  },
+  "homepage": "https://dgmpk.github.io/mcropper/",
+  "dependencies": {
+    "alloyfinger": "^0.1.15"
+  },
+  "devDependencies": {
+    "create-banner": "^1.0.0",
+    "rollup": "^0.66.2",
+    "rollup-plugin-buble": "^0.19.2",
+    "uglify-js": "^3.4.9"
+  }
+}
