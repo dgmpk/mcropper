@@ -2,12 +2,13 @@ import AlloyFinger from 'alloyfinger'
 
 const NAMESPACE = '$$mcropper'
 
-const DEFAULTS = {
+const defaults = {
   containRatio: 0.92,
   aspectRatio: 1,
   modalOpacity: 0.6,
   borderColor: 'rgba(51, 153, 255, 0.75)',
   borderWidth: 1,
+  borderOrigin: 'out',
   responsive: true,
   restore: true,
 }
@@ -21,10 +22,11 @@ export default class MCropper {
    * @param {Number} [options.height] 裁剪框高度(px)
    * @param {Number} [options.aspectRatio=1] 宽高比，当没有同时指定宽高时起效
    * @param {Number} [options.containRatio=0.92] 当没有指定宽高时，配合aspectRatio自动计算尺寸，以使其宽度和高度适应内容区域，该值控制缩比例(ratio <= 1)
-   * @param {Boolean} [options.circle] 是否启用圆形裁剪框
+   * @param {Boolean} [options.circle] 是否启用圆形裁剪框，取裁剪框宽度为直径
    * @param {Function(cropper)} [options.onReady] 初始化成功的回调
    * @param {String} [options.borderColor='rgba(51, 153, 255, 0.75)'] 裁剪框边框颜色
    * @param {Number} [options.borderWidth=1] 裁剪框边框宽度(px)
+   * @param {Number} [options.borderOrigin=out] 裁剪框边框线绘制位置，out：框的外面，in：框的里面，middle：框的里外各绘制一半
    * @param {Number} [options.modalOpacity=0.6] 蒙层不透明度
    * @param {Boolean} [options.responsive=true] 是否在window.resize后重新渲染
    * @param {Boolean} [options.restore=true] 是否在window.resize重新渲染后保持当前裁剪区域不变
@@ -36,49 +38,51 @@ export default class MCropper {
 
     container[NAMESPACE] = this
     this.container = container
-    this.containerWidth = container.clientWidth
-    this.containerHeight = container.clientHeight
 
-    this.options = options = assign({}, DEFAULTS, options)
-    if(!options.width && !options.height) {
-      if(options.containRatio > 1) {
-        throw new Error('options.containRatio must be less than or equal to 1')
+    this.options = assign({}, MCropper.defaults, options)
+    const {
+      width,
+      height,
+      aspectRatio
+    } = this.options
+    if(width || height) {
+      if(width) {
+        this.cropBoxWidth = width
       }
-      if(options.aspectRatio > container.clientWidth / container.clientHeight) {
-        this.cropBoxWidth = container.clientWidth * options.containRatio
-      } else {
-        this.cropBoxHeight = container.clientHeight * options.containRatio
+      if(height) {
+        this.cropBoxHeight = height
       }
-    } else {
-      if(options.width) {
-        this.cropBoxWidth = options.width
+      if(!this.cropBoxHeight) {
+        this.cropBoxHeight = this.cropBoxWidth / aspectRatio
       }
-      if(options.height) {
-        this.cropBoxHeight = options.height
+      if(!this.cropBoxWidth) {
+        this.cropBoxWidth = this.cropBoxHeight * aspectRatio
       }
     }
-    if(!this.cropBoxHeight) {
-      this.cropBoxHeight = this.cropBoxWidth / options.aspectRatio
-    }
-    if(!this.cropBoxWidth) {
-      this.cropBoxWidth = this.cropBoxHeight * options.aspectRatio
-    }
-    if(this.cropBoxWidth !== this.cropBoxHeight && options.circle) {
-      throw new Error('can\'t set options.circle to true when width is not equal to height')
-    }
-    this.imgOriginX = (this.containerWidth - this.cropBoxWidth) / 2
-    this.imgOriginY = (this.containerHeight - this.cropBoxHeight) / 2
 
     this.canvas = document.createElement('canvas')
     assign(this.canvas.style, {
       position: 'absolute',
       zIndex: '1',
-      top: '0px',
-      left: '0px'
+      top: '0',
+      left: '0'
     })
-    this.canvas.width = this.containerWidth
-    this.canvas.height = this.containerHeight
     this.ctx = this.canvas.getContext('2d')
+    this.drawCropBox = this.options.circle
+      ? spread => this.ctx.arc(
+        this.container.clientWidth / 2,
+        this.container.clientHeight / 2,
+        this.cropBoxWidth / 2 + spread / 2,
+        0,
+        Math.PI * 2,
+        false
+      )
+      : spread => this.ctx.rect(
+        this.container.clientWidth / 2 - this.cropBoxWidth / 2 - spread / 2,
+        this.container.clientHeight / 2 - this.cropBoxHeight / 2 - spread / 2,
+        this.cropBoxWidth + spread,
+        this.cropBoxHeight + spread
+      )
 
     this.callbacks = []
     options.onReady && this.callbacks.push(options.onReady)
@@ -88,14 +92,12 @@ export default class MCropper {
       // resolve base64 uri bug in safari:'cross-origin image load denied by cross-origin resource sharing policy.'
       this.img.crossOrigin = 'anonymous'
     }
-    this.img.onload = () => this.init()
+    this.img.onload = this.init.bind(this)
     this.img.src = src
   }
   init() {
     this.container.appendChild(this.canvas)
-    this.imgWidth = this.img.naturalWidth
-    this.imgHeight = this.img.naturalHeight
-    this.imgOriginScale = Math.max(this.cropBoxWidth / this.imgWidth, this.cropBoxHeight / this.imgHeight)
+    this.initData()
     this.renderCenter()
     this.addFingerListener()
     if(this.options.responsive) {
@@ -108,143 +110,9 @@ export default class MCropper {
       callback(this)
     }
   }
-  renderCenter() {
-    this.render(
-      (this.imgWidth * this.imgOriginScale - this.cropBoxWidth) / 2,
-      (this.imgHeight * this.imgOriginScale - this.cropBoxHeight) / 2,
-      this.imgOriginScale
-    )
-  }
-  render(imgStartX, imgStartY, imgScale) {
-    this.clearCavnvas()
-    this.renderCover()
-    this.renderCropBox()
-    this.renderImage(imgStartX, imgStartY, imgScale)
-  }
-  clearCavnvas() {
-    const ctx = this.ctx
-    ctx.save()
-    ctx.globalCompositeOperation = 'copy'
-    ctx.globalAlpha = 0
-    ctx.fillRect(0, 0, this.containerWidth, this.containerHeight)
-    ctx.restore()
-  }
-  /**
-   * @param  {Number} imgStartX 裁剪框左上角在图片尺寸坐标系统上的x坐标
-   * @param  {Number} imgStartY 裁剪框左上角在图片尺寸坐标系统上的y坐标
-   */
-  renderImage(imgStartX, imgStartY, imgScale) {
-    imgScale = Math.max(imgScale, this.imgOriginScale)
-    if(imgScale !== this.imgScale) {
-      // 如果要缩放，先计算新的imgStartCoordRange，再修正imgStartCoord保证不越界
-      const {
-        cropBoxWidth,
-        cropBoxHeight,
-        imgWidth,
-        imgHeight,
-      } = this
-      this.imgScale = imgScale
-      this.imgMaxOffsetX = imgWidth * imgScale - cropBoxWidth
-      this.imgMaxOffsetY = imgHeight * imgScale - cropBoxHeight
-    }
-    this.imgStartX = limitRange(imgStartX, [0, this.imgMaxOffsetX])
-    this.imgStartY = limitRange(imgStartY, [0, this.imgMaxOffsetY])
-    this.ctx.save()
-    this.ctx.globalCompositeOperation = 'destination-over'
-    this.ctx.drawImage(
-      this.img,
-      this.imgOriginX - this.imgStartX,
-      this.imgOriginY - this.imgStartY,
-      this.imgWidth * imgScale,
-      this.imgHeight * imgScale
-    )
-    this.ctx.restore()
-  }
-  renderCover() {
-    const ctx = this.ctx
-    ctx.save()
-    ctx.fillStyle = 'black'
-    ctx.globalAlpha = this.options.modalOpacity
-    ctx.fillRect(0, 0, this.containerWidth, this.containerHeight)
-    ctx.restore()
-  }
-  renderCropBox() {
-    const {
-      ctx,
-      cropBoxWidth,
-      cropBoxHeight,
-      containerWidth,
-      containerHeight,
-    } = this
-    const drawCropBox = this.options.circle
-      ? spread => ctx.arc(
-        containerWidth / 2,
-        containerHeight / 2,
-        cropBoxWidth / 2 + spread / 2,
-        0,
-        Math.PI * 2,
-        false
-      )
-      : spread => ctx.rect(
-        containerWidth / 2 - cropBoxWidth / 2 - spread / 2,
-        containerHeight / 2 - cropBoxHeight / 2 - spread / 2,
-        cropBoxWidth + spread,
-        cropBoxHeight + spread
-      )
-
-    ctx.save()
-    ctx.globalCompositeOperation = 'destination-out'
-    ctx.beginPath()
-    drawCropBox(0)
-    ctx.fill()
-    ctx.restore()
-
-    ctx.save()
-    ctx.beginPath()
-    ctx.strokeStyle = this.options.borderColor
-    ctx.lineWidth = this.options.borderWidth
-    // 笔触线条在绘制的图形的内部，修正至外面
-    drawCropBox(ctx.lineWidth)
-    ctx.stroke()
-    ctx.restore()
-  }
-  zoomImage(scale, centerXOnImage, centerYOnImage, centerXOnContainer, centerYOnContainer) {
-    scale = Math.max(this.imgOriginScale, scale)
-    // 以缩放后的centerCoordOnImage和centerCoordOnContainer重合为前提计算的新的imgStartCoord
-    const zoom = scale / this.imgScale
-    centerXOnImage *= zoom
-    centerYOnImage *= zoom
-    const imgStartX = this.imgOriginX - (centerXOnContainer - centerXOnImage)
-    const imgStartY = this.imgOriginY - (centerYOnContainer - centerYOnImage)
-    this.render(imgStartX, imgStartY, scale)
-  }
-  addFingerListener() {
-    let tempScale = 0
-    let centerXOnContainer = null
-    let centerYOnContainer = null
-    this.alloyFinger = new AlloyFinger(this.canvas, {
-      multipointStart: e => {
-        const [t1, t2] = e.touches
-        const centerPageX = (t1.pageX + t2.pageX) / 2
-        const centerPageY = (t1.pageY + t2.pageY) / 2;
-        [centerXOnContainer, centerYOnContainer] = pageCoord2ElementCoord(this.container, centerPageX, centerPageY)
-        tempScale = this.imgScale
-      },
-      pinch: e => {
-        // 将在container坐标系上的坐标换算到img
-        const centerXOnImage = centerXOnContainer - (this.imgOriginX - this.imgStartX)
-        const centerYOnImage = centerYOnContainer - (this.imgOriginY - this.imgStartY)
-        this.zoomImage(tempScale * e.zoom, centerXOnImage, centerYOnImage, centerXOnContainer, centerYOnContainer)
-      },
-      pressMove: e => {
-        e.preventDefault()
-        this.render(this.imgStartX - e.deltaX, this.imgStartY - e.deltaY, this.imgScale)
-      }
-    })
-  }
-  resetSize() {
-    this.containerWidth = this.canvas.width = this.container.clientWidth
-    this.containerHeight = this.canvas.height = this.container.clientHeight
+  initData() {
+    const containerWidth = this.canvas.width = this.container.clientWidth
+    const containerHeight = this.canvas.height = this.container.clientHeight
     const {
       width,
       height,
@@ -252,42 +120,171 @@ export default class MCropper {
       containRatio,
     } = this.options
     if(!width && !height) {
-      if(aspectRatio > this.containerWidth / this.containerHeight) {
-        this.cropBoxWidth = this.containerWidth * containRatio
+      if(aspectRatio > containerWidth / containerHeight) {
+        this.cropBoxWidth = containerWidth * containRatio
         this.cropBoxHeight = this.cropBoxWidth / aspectRatio
       } else {
-        this.cropBoxHeight = this.containerHeight * containRatio
+        this.cropBoxHeight = containerHeight * containRatio
         this.cropBoxWidth = this.cropBoxHeight * aspectRatio
       }
     }
-    this.imgOriginX = (this.containerWidth - this.cropBoxWidth) / 2
-    this.imgOriginY = (this.containerHeight - this.cropBoxHeight) / 2
-    this.imgOriginScale = Math.max(this.cropBoxWidth / this.imgWidth, this.cropBoxHeight / this.imgHeight)
+    this.imgOriginX = (containerWidth - this.cropBoxWidth) / 2
+    this.imgOriginY = (containerHeight - this.cropBoxHeight) / 2
+    this.imgMinScale = Math.max(
+      this.cropBoxWidth / this.img.naturalWidth,
+      this.cropBoxHeight / this.img.naturalHeight
+    )
+  }
+  renderCenter() {
+    const imgScale = this.imgMinScale
+    this.render(
+      this.imgOriginX - (this.img.naturalWidth * imgScale - this.cropBoxWidth) / 2,
+      this.imgOriginY - (this.img.naturalHeight * imgScale - this.cropBoxHeight) / 2,
+      imgScale
+    )
+  }
+  render(imgX, imgY, imgScale) {
+    this.renderCover()
+    this.renderImage(imgX, imgY, imgScale)
+  }
+  renderCover() {
+    const {
+      ctx,
+      options: {
+        modalOpacity,
+        borderColor,
+        borderWidth,
+        borderOrigin
+      }
+    } = this
+
+    // renderShadow
+    ctx.save()
+    ctx.globalCompositeOperation = 'copy' // clear old
+    ctx.globalAlpha = modalOpacity
+    ctx.fillStyle = 'black'
+    ctx.fillRect(0, 0, this.container.clientWidth, this.container.clientHeight)
+    ctx.restore()
+
+    const spread = borderOrigin === 'out'
+      ? borderWidth
+      : borderOrigin === 'in'
+        ? -borderWidth
+        : 0
+
+    // strokeCropBox
+    ctx.save()
+    ctx.beginPath()
+    ctx.globalCompositeOperation = 'destination-out' // 裁剪阴影的一部分
+    this.drawCropBox(spread + borderWidth) // 加大裁剪部分的面积，使边框线不会重叠在阴影上方
+    ctx.fill()
+    ctx.restore()
+
+    // renderCropBoxBorder
+    ctx.save()
+    ctx.beginPath()
+    ctx.strokeStyle = borderColor
+    ctx.lineWidth = borderWidth
+    this.drawCropBox(spread)
+    ctx.stroke()
+    ctx.restore()
+  }
+  renderImage(imgX, imgY, imgScale) {
+    imgScale = Math.max(imgScale, this.imgMinScale)
+    if(imgScale !== this.imgScale) {
+      // 如果要缩放，先计算新的imgStartCoordsRange，再修正imgStartCoords保证不越界
+      this.imgScale = imgScale
+      this.imgWidth = this.img.naturalWidth * imgScale
+      this.imgHeight = this.img.naturalHeight * imgScale
+      const imgMaxOffsetX = this.imgWidth - this.cropBoxWidth
+      const imgMaxOffsetY = this.imgHeight - this.cropBoxHeight
+      this.imgXRange = [this.imgOriginX - imgMaxOffsetX, this.imgOriginX]
+      this.imgYRange = [this.imgOriginY - imgMaxOffsetY, this.imgOriginY]
+    }
+    this.imgX = limitRange(imgX, this.imgXRange)
+    this.imgY = limitRange(imgY, this.imgYRange)
+
+    const ctx = this.ctx
+    ctx.save()
+    ctx.globalCompositeOperation = 'destination-over'
+    ctx.drawImage(
+      this.img,
+      this.imgX,
+      this.imgY,
+      this.imgWidth,
+      this.imgHeight
+    )
+    ctx.restore()
+  }
+  zoomImage(scale, [relativeXOfImage, relativeYOfImage], [relativeXOfContainer, relativeYOfContainer]) {
+    scale = Math.max(this.imgMinScale, scale)
+    // 以缩放后的coordsOfImage和coordsOfContainer重合为前提计算的新的imgStartCoords
+    const zoom = scale / this.imgScale
+    relativeXOfImage *= zoom
+    relativeYOfImage *= zoom
+    this.render(relativeXOfContainer - relativeXOfImage, relativeYOfContainer - relativeYOfImage, scale)
+  }
+  addFingerListener() {
+    let tempScale = 0
+    let tempRelativeCoordsOfImage = [0, 0]
+    // 获取两指之间的中点在container中的坐标
+    const getRelativeCoordsOfContainerOnCenter = e => {
+      const [t1, t2] = e.touches
+      const pageX = (t1.pageX + t2.pageX) / 2
+      const pageY = (t1.pageY + t2.pageY) / 2
+      const {
+        top,
+        left
+      } = this.container.getBoundingClientRect()
+      return [pageX - left, pageY - top]
+    }
+    // 将在container坐标系上的坐标换算到img
+    const updateTempRelativeCoordsOfImage = ([relativeXOfContainer, relativeYOfContainer]) => {
+      tempRelativeCoordsOfImage = [
+        relativeXOfContainer - this.imgX,
+        relativeYOfContainer - this.imgY
+      ]
+    }
+    this.alloyFinger = new AlloyFinger(this.canvas, {
+      multipointStart: e => {
+        tempScale = this.imgScale
+        updateTempRelativeCoordsOfImage(getRelativeCoordsOfContainerOnCenter(e))
+      },
+      pinch: e => {
+        const relativeCoordsOfContainer = getRelativeCoordsOfContainerOnCenter(e)
+        this.zoomImage(tempScale * e.zoom, tempRelativeCoordsOfImage, relativeCoordsOfContainer)
+        updateTempRelativeCoordsOfImage(relativeCoordsOfContainer)
+      },
+      pressMove: e => {
+        e.preventDefault()
+        this.render(this.imgX + e.deltaX, this.imgY + e.deltaY, this.imgScale)
+      }
+    })
   }
   resize() {
     if(this.options.restore) {
       const [
-        imgStartXNatural,
-        imgStartYNatural
+        naturalImgStartX,
+        naturalImgStartY
       ] = this.getImageData()
-      const zoom = this.imgScale / this.imgOriginScale
-      this.resetSize()
-      const imgScale = this.imgOriginScale * zoom
+      const zoom = this.imgScale / this.imgMinScale
+      this.initData()
+      const imgScale = this.imgMinScale * zoom
       this.render(
-        imgStartXNatural * imgScale,
-        imgStartYNatural * imgScale,
+        this.imgOriginX - naturalImgStartX * imgScale,
+        this.imgOriginY - naturalImgStartY * imgScale,
         imgScale
       )
     } else {
-      this.resetSize()
+      this.initData()
       this.renderCenter()
     }
   }
   getImageData() {
     const scale = this.imgScale
     return [
-      this.imgStartX / scale,
-      this.imgStartY / scale,
+      (this.imgOriginX - this.imgX) / scale,
+      (this.imgOriginY - this.imgY) / scale,
       this.cropBoxWidth / scale,
       this.cropBoxHeight / scale
     ]
@@ -364,17 +361,6 @@ function limitRange(val, [min, max]) {
   return val < min ? min : val > max ? max : val
 }
 
-/**
- * 把相对于页面定位的坐标转换相对于元素的坐标
- */
-function pageCoord2ElementCoord(el, pageX, pageY) {
-  const {
-    top,
-    left
-  } = el.getBoundingClientRect()
-  return [pageX - left, pageY - top]
-}
-
 function assign(object, ...sources) {
   sources.forEach(source => {
     for (var variable in source) {
@@ -385,3 +371,5 @@ function assign(object, ...sources) {
   })
   return object
 }
+
+MCropper.defaults = defaults

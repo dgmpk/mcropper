@@ -5,7 +5,7 @@
 * 只支持移动端
 * 裁剪框大小自适应
 * 初始化时图片有一边尺寸与裁剪框相等，另一边大于或等于裁剪框且居中
-* 缩放图片时以双指中心为中点
+* 缩放图片时，双指中点对应图片的位置会跟随双指中点移动
 * 无论移动或缩放，裁剪框始终不会超出图片外
 * window.resize时自动重绘，并保持裁剪的区域不变
 
@@ -20,10 +20,11 @@ class MCropper {
    * @param {Number} [options.height] 裁剪框高度(px)
    * @param {Number} [options.aspectRatio=1] 宽高比，当没有同时指定宽高时起效
    * @param {Number} [options.containRatio=0.92] 当没有指定宽高时，配合aspectRatio自动计算尺寸，以使其宽度和高度适应内容区域，该值控制缩比例(ratio <= 1)
-   * @param {Boolean} [options.circle] 是否启用圆形裁剪框
+   * @param {Boolean} [options.circle] 是否启用圆形裁剪框，取裁剪框宽度为直径
    * @param {Function(cropper)} [options.onReady] 初始化成功的回调
    * @param {String} [options.borderColor='rgba(51, 153, 255, 0.75)'] 裁剪框边框颜色
    * @param {Number} [options.borderWidth=1] 裁剪框边框宽度(px)
+   * @param {Number} [options.borderOrigin=out] 裁剪框边框线绘制位置，out：框的外面，in：框的里面，middle：框的里外各绘制一半
    * @param {Number} [options.modalOpacity=0.6] 蒙层不透明度
    * @param {Boolean} [options.responsive=true] 是否在window.resize后重新渲染
    * @param {Boolean} [options.restore=true] 是否在window.resize重新渲染后保持当前裁剪区域不变
