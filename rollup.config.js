@@ -1,6 +1,5 @@
 const buble = require('rollup-plugin-buble')
 const createBanner = require('create-banner')
-const pkg = require('./package')
 
 const name = 'MCropper'
 

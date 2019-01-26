@@ -85,7 +85,7 @@ export default class MCropper {
       )
 
     this.callbacks = []
-    options.onReady && this.callbacks.push(options.onReady)
+    this.options.onReady && this.callbacks.push(this.options.onReady)
 
     this.img = new Image()
     if(src.substring(0, 4).toLowerCase() === 'http') {

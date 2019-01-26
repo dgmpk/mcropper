@@ -5,7 +5,7 @@
  * Copyright 2018-present dgmpk
  * Released under the MIT license
  *
- * Date: 2018-10-18T15:28:55.051Z
+ * Date: 2019-01-26T06:56:01.796Z
  */
 
 (function (global, factory) {
@@ -84,7 +84,7 @@
       ); };
 
     this.callbacks = [];
-    options.onReady && this.callbacks.push(options.onReady);
+    this.options.onReady && this.callbacks.push(this.options.onReady);
 
     this.img = new Image();
     if(src.substring(0, 4).toLowerCase() === 'http') {
