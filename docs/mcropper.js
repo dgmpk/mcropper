@@ -1,11 +1,11 @@
 /*!
- * MCropper.js v1.1.0
+ * MCropper.js v2.0.0
  * https://dgmpk.github.io/mcropper/
  *
  * Copyright 2018-present dgmpk
  * Released under the MIT license
  *
- * Date: 2019-01-26T06:56:01.796Z
+ * Date: 2019-08-02T14:10:21.279Z
  */
 
 (function (global, factory) {
@@ -16,45 +16,51 @@
 
   AlloyFinger = AlloyFinger && AlloyFinger.hasOwnProperty('default') ? AlloyFinger['default'] : AlloyFinger;
 
-  var NAMESPACE = '$$mcropper';
+  var NAMESPACE = '__MCropper__';
 
   var defaults = {
-    containRatio: 0.92,
     aspectRatio: 1,
+    containRatio: 0.92,
     modalOpacity: 0.6,
     borderColor: 'rgba(51, 153, 255, 0.75)',
     borderWidth: 1,
     borderOrigin: 'out',
-    responsive: true,
-    restore: true,
   };
 
-  var MCropper = function MCropper(container, src, options) {
+  var MCropper = function MCropper(container, src, options, callbackfn) {
     var this$1 = this;
 
-    if(container[NAMESPACE]) {
+    if (container[NAMESPACE]) {
       container[NAMESPACE].destroy();
     }
-
     container[NAMESPACE] = this;
     this.container = container;
 
+    if (typeof src === 'object') {
+      options = src;
+      src = null;
+    } else if (typeof options === 'function') {
+      callbackfn = options;
+      options = null;
+    }
     this.options = assign({}, MCropper.defaults, options);
+
+    // try to calculate fixed size of crop box if width or height has provided
     var ref = this.options;
     var width = ref.width;
     var height = ref.height;
     var aspectRatio = ref.aspectRatio;
-    if(width || height) {
-      if(width) {
+    if (width || height) {
+      if (width) {
         this.cropBoxWidth = width;
       }
-      if(height) {
+      if (height) {
         this.cropBoxHeight = height;
       }
-      if(!this.cropBoxHeight) {
+      if (!this.cropBoxHeight) {
         this.cropBoxHeight = this.cropBoxWidth / aspectRatio;
       }
-      if(!this.cropBoxWidth) {
+      if (!this.cropBoxWidth) {
         this.cropBoxWidth = this.cropBoxHeight * aspectRatio;
       }
     }
@@ -82,12 +88,18 @@
         this$1.cropBoxWidth + spread,
         this$1.cropBoxHeight + spread
       ); };
-
-    this.callbacks = [];
-    this.options.onReady && this.callbacks.push(this.options.onReady);
+    this.container.appendChild(this.canvas);
 
     this.img = new Image();
-    if(src.substring(0, 4).toLowerCase() === 'http') {
+    src && this.setSrc(src, callbackfn);
+  };
+  MCropper.prototype.setSrc = function setSrc (src, callbackfn) {
+    this.alloyFingerListener && this.alloyFingerListener.destroy();
+    this.ready = false;
+    this.src = src;
+    this.callbackfns = [];
+    callbackfn && this.callbackfns.push(callbackfn);
+    if (src.substring(0, 4).toLowerCase() === 'http') {
       // resolve base64 uri bug in safari:'cross-origin image load denied by cross-origin resource sharing policy.'
       this.img.crossOrigin = 'anonymous';
     }
@@ -95,23 +107,16 @@
     this.img.src = src;
   };
   MCropper.prototype.init = function init () {
-      var this$1 = this;
-
-    this.container.appendChild(this.canvas);
-    this.initData();
-    this.renderCenter();
-    this.addFingerListener();
-    if(this.options.responsive) {
-      this.resizeListener = this.resize.bind(this);
-      window.addEventListener('resize', this.resizeListener);
-    }
     this.ready = true;
+    this.calculateImgData();
+    this.renderCenter();
     var callback;
-    while ((callback = this.callbacks.shift())) {
-      callback(this$1);
+    while ((callback = this.callbackfns.shift())) {
+      callback(this);
     }
+    this.addFingerListener();
   };
-  MCropper.prototype.initData = function initData () {
+  MCropper.prototype.calculateImgData = function calculateImgData () {
     var containerWidth = this.canvas.width = this.container.clientWidth;
     var containerHeight = this.canvas.height = this.container.clientHeight;
     var ref = this.options;
@@ -119,8 +124,8 @@
       var height = ref.height;
       var aspectRatio = ref.aspectRatio;
       var containRatio = ref.containRatio;
-    if(!width && !height) {
-      if(aspectRatio > containerWidth / containerHeight) {
+    if (!width && !height) {
+      if (aspectRatio > containerWidth / containerHeight) {
         this.cropBoxWidth = containerWidth * containRatio;
         this.cropBoxHeight = this.cropBoxWidth / aspectRatio;
       } else {
@@ -128,8 +133,8 @@
         this.cropBoxWidth = this.cropBoxHeight * aspectRatio;
       }
     }
-    this.imgOriginX = (containerWidth - this.cropBoxWidth) / 2;
-    this.imgOriginY = (containerHeight - this.cropBoxHeight) / 2;
+    this.cropBoxOriginX = (containerWidth - this.cropBoxWidth) / 2;
+    this.cropBoxOriginY = (containerHeight - this.cropBoxHeight) / 2;
     this.imgMinScale = Math.max(
       this.cropBoxWidth / this.img.naturalWidth,
       this.cropBoxHeight / this.img.naturalHeight
@@ -138,14 +143,14 @@
   MCropper.prototype.renderCenter = function renderCenter () {
     var imgScale = this.imgMinScale;
     this.render(
-      this.imgOriginX - (this.img.naturalWidth * imgScale - this.cropBoxWidth) / 2,
-      this.imgOriginY - (this.img.naturalHeight * imgScale - this.cropBoxHeight) / 2,
+      this.cropBoxOriginX - (this.img.naturalWidth * imgScale - this.cropBoxWidth) / 2,
+      this.cropBoxOriginY - (this.img.naturalHeight * imgScale - this.cropBoxHeight) / 2,
       imgScale
     );
   };
-  MCropper.prototype.render = function render (imgX, imgY, imgScale) {
+  MCropper.prototype.render = function render (imgOriginX, imgOriginY, imgScale) {
     this.renderCover();
-    this.renderImage(imgX, imgY, imgScale);
+    this.renderImage(imgOriginX, imgOriginY, imgScale);
   };
   MCropper.prototype.renderCover = function renderCover () {
     var ref = this;
@@ -187,147 +192,156 @@
     ctx.stroke();
     ctx.restore();
   };
-  MCropper.prototype.renderImage = function renderImage (imgX, imgY, imgScale) {
+  MCropper.prototype.renderImage = function renderImage (imgOriginX, imgOriginY, imgScale) {
     imgScale = Math.max(imgScale, this.imgMinScale);
-    if(imgScale !== this.imgScale) {
-      // 如果要缩放，先计算新的imgStartCoordsRange，再修正imgStartCoords保证不越界
+
+    // 根据缩放计算一个img起点坐标范围来限制img起点坐标的取值范围，以保证图片始终比裁剪框大
+    if (imgScale !== this.imgScale) {
       this.imgScale = imgScale;
       this.imgWidth = this.img.naturalWidth * imgScale;
       this.imgHeight = this.img.naturalHeight * imgScale;
       var imgMaxOffsetX = this.imgWidth - this.cropBoxWidth;
       var imgMaxOffsetY = this.imgHeight - this.cropBoxHeight;
-      this.imgXRange = [this.imgOriginX - imgMaxOffsetX, this.imgOriginX];
-      this.imgYRange = [this.imgOriginY - imgMaxOffsetY, this.imgOriginY];
+      this.imgOriginXRange = [this.cropBoxOriginX - imgMaxOffsetX, this.cropBoxOriginX];
+      this.imgOriginYRange = [this.cropBoxOriginY - imgMaxOffsetY, this.cropBoxOriginY];
     }
-    this.imgX = limitRange(imgX, this.imgXRange);
-    this.imgY = limitRange(imgY, this.imgYRange);
+    this.imgOriginX = limitRange(imgOriginX, this.imgOriginXRange);
+    this.imgOriginY = limitRange(imgOriginY, this.imgOriginYRange);
 
     var ctx = this.ctx;
     ctx.save();
     ctx.globalCompositeOperation = 'destination-over';
     ctx.drawImage(
       this.img,
-      this.imgX,
-      this.imgY,
+      this.imgOriginX,
+      this.imgOriginY,
       this.imgWidth,
       this.imgHeight
     );
     ctx.restore();
   };
+
+  /**
+   * 缩放（始终以多指触点的中点缩放，所以可能会同时带有平移）
+   * @param {number} scale
+   * @param {[number, number]} param1 缩放前的中点在image坐标系的坐标
+   * @param {[number, number]} param2 缩放后的中点在container坐标系的坐标
+   */
   MCropper.prototype.zoomImage = function zoomImage (scale, ref, ref$1) {
-      var relativeXOfImage = ref[0];
-      var relativeYOfImage = ref[1];
-      var relativeXOfContainer = ref$1[0];
-      var relativeYOfContainer = ref$1[1];
+      var ix = ref[0];
+      var iy = ref[1];
+      var cx = ref$1[0];
+      var cy = ref$1[1];
 
     scale = Math.max(this.imgMinScale, scale);
-    // 以缩放后的coordsOfImage和coordsOfContainer重合为前提计算的新的imgStartCoords
     var zoom = scale / this.imgScale;
-    relativeXOfImage *= zoom;
-    relativeYOfImage *= zoom;
-    this.render(relativeXOfContainer - relativeXOfImage, relativeYOfContainer - relativeYOfImage, scale);
+    this.render(cx - ix * zoom, cy - iy * zoom, scale);
+  };
+  MCropper.prototype.pagePointToContainerPoint = function pagePointToContainerPoint (ref) {
+      var pageX = ref[0];
+      var pageY = ref[1];
+
+    var ref$1 = this.container.getBoundingClientRect();
+      var top = ref$1.top;
+      var left = ref$1.left;
+    return [pageX - left, pageY - top]
+  };
+  MCropper.prototype.containerPointToImagePoint = function containerPointToImagePoint (ref) {
+      var cx = ref[0];
+      var cy = ref[1];
+
+    return [cx - this.imgOriginX, cy - this.imgOriginY]
   };
   MCropper.prototype.addFingerListener = function addFingerListener () {
       var this$1 = this;
 
-    var tempScale = 0;
-    var tempRelativeCoordsOfImage = [0, 0];
-    // 获取两指之间的中点在container中的坐标
-    var getRelativeCoordsOfContainerOnCenter = function (e) {
-      var ref = e.touches;
-        var t1 = ref[0];
-        var t2 = ref[1];
-      var pageX = (t1.pageX + t2.pageX) / 2;
-      var pageY = (t1.pageY + t2.pageY) / 2;
-      var ref$1 = this$1.container.getBoundingClientRect();
-        var top = ref$1.top;
-        var left = ref$1.left;
-      return [pageX - left, pageY - top]
+    var initialImgScale;
+    var centerOfGravityOnImage;
+    var getCenterOfGravityOnContainer = function (event) {
+      var points = [].slice.apply(event.touches).map(function (touch) { return [touch.pageX, touch.pageY]; });
+      var centerOfGravity;
+      if (points.length === 1) {
+        centerOfGravity = points[0];
+      } else if (points.length === 2) {
+        centerOfGravity = [(points[0][0] + points[1][0]) / 2, (points[0][1] + points[1][1]) / 2];
+      } else {
+        centerOfGravity = getCenterOfGravity(points);
+      }
+      return this$1.pagePointToContainerPoint(centerOfGravity)
     };
-    // 将在container坐标系上的坐标换算到img
-    var updateTempRelativeCoordsOfImage = function (ref) {
-        var relativeXOfContainer = ref[0];
-        var relativeYOfContainer = ref[1];
-
-      tempRelativeCoordsOfImage = [
-        relativeXOfContainer - this$1.imgX,
-        relativeYOfContainer - this$1.imgY
-      ];
+    var updateCenterOfGravityOnImage = function (containerPoint) {
+      centerOfGravityOnImage = this$1.containerPointToImagePoint(containerPoint);
     };
-    this.alloyFinger = new AlloyFinger(this.canvas, {
+    this.alloyFingerListener = new AlloyFinger(this.canvas, {
       multipointStart: function (e) {
-        tempScale = this$1.imgScale;
-        updateTempRelativeCoordsOfImage(getRelativeCoordsOfContainerOnCenter(e));
+        initialImgScale = this$1.imgScale;
+        updateCenterOfGravityOnImage(getCenterOfGravityOnContainer(e));
       },
       pinch: function (e) {
-        var relativeCoordsOfContainer = getRelativeCoordsOfContainerOnCenter(e);
-        this$1.zoomImage(tempScale * e.zoom, tempRelativeCoordsOfImage, relativeCoordsOfContainer);
-        updateTempRelativeCoordsOfImage(relativeCoordsOfContainer);
+        var newCenterOfGravityOnContainer = getCenterOfGravityOnContainer(e);
+        this$1.zoomImage(initialImgScale * e.zoom, centerOfGravityOnImage, newCenterOfGravityOnContainer);
+        updateCenterOfGravityOnImage(newCenterOfGravityOnContainer);
       },
       pressMove: function (e) {
         e.preventDefault();
-        this$1.render(this$1.imgX + e.deltaX, this$1.imgY + e.deltaY, this$1.imgScale);
+        this$1.render(this$1.imgOriginX + e.deltaX, this$1.imgOriginY + e.deltaY, this$1.imgScale);
       }
     });
   };
-  MCropper.prototype.resize = function resize () {
-    if(this.options.restore) {
+  MCropper.prototype.resize = function resize (reset) {
+    if (reset) {
+      this.calculateImgData();
+      this.renderCenter();
+    } else {
       var ref = this.getImageData();
-        var naturalImgStartX = ref[0];
-        var naturalImgStartY = ref[1];
+        var sx = ref[0];
+        var sy = ref[1];
       var zoom = this.imgScale / this.imgMinScale;
-      this.initData();
+      this.calculateImgData();
       var imgScale = this.imgMinScale * zoom;
       this.render(
-        this.imgOriginX - naturalImgStartX * imgScale,
-        this.imgOriginY - naturalImgStartY * imgScale,
+        this.cropBoxOriginX - sx * imgScale,
+        this.cropBoxOriginY - sy * imgScale,
         imgScale
       );
-    } else {
-      this.initData();
-      this.renderCenter();
     }
   };
   MCropper.prototype.getImageData = function getImageData () {
     var scale = this.imgScale;
     return [
-      (this.imgOriginX - this.imgX) / scale,
-      (this.imgOriginY - this.imgY) / scale,
-      this.cropBoxWidth / scale,
-      this.cropBoxHeight / scale
+      (this.cropBoxOriginX - this.imgOriginX) / scale, // 被剪切图像的裁剪起点的 x 坐标
+      (this.cropBoxOriginY - this.imgOriginY) / scale, // 被剪切图像的裁剪起点的 y 坐标
+      this.cropBoxWidth / scale, // 被剪切图像的宽度
+      this.cropBoxHeight / scale // 被剪切图像的高度
     ]
   };
-  /**
-   * 裁剪，下列可选参数有且只有一个发挥作用，由上往下优先级降低
-   * @param {Object|Number} [options=1] 为数字时作用和options.ratio一样
-   * @param {Number} [options.width] 给出宽度，自动计算高度
-   * @param {Number} [options.height] 给出高度，自动计算宽度
-   * @param {Number} [options.naturalRatio] 基于图片原始尺寸的输出倍率
-   * @param {Number} [options.ratio] 基于裁剪框尺寸的输出倍率
-   * @return {Canvas}
-   */
-  MCropper.prototype.crop = function crop (options) {
-    if(!this.ready) {
+  MCropper.prototype.crop = function crop (value, attribute) {
+      if ( value === void 0 ) value = 1;
+      if ( attribute === void 0 ) attribute = 'ratio';
+
+    if (!this.ready) {
       throw new Error('can\'t crop before ready')
     }
-    options = options || 1;
     var canvas = document.createElement('canvas');
     var ctx = canvas.getContext('2d');
     var aspectRatio = this.cropBoxWidth / this.cropBoxHeight;
     var imageData = this.getImageData();
-    if(options.width) {
-      canvas.width = options.width;
-      canvas.height = options.width * aspectRatio;
-    } else if(options.height) {
-      canvas.height = options.height;
-      canvas.width = options.width / aspectRatio;
-    } else if(options.naturalRatio) {
-      canvas.width = imageData[2] * options.naturalRatio;
-      canvas.height = imageData[3] * options.naturalRatio;
-    } else {
-      var outputRatio = options.outputRatio || Number(options);
-      canvas.width = this.cropBoxWidth * outputRatio;
-      canvas.height = this.cropBoxHeight * outputRatio;
+    switch (attribute) {
+      case 'width':
+        canvas.width = value;
+        canvas.height = value * aspectRatio;
+        break;
+      case 'height':
+        canvas.height = value;
+        canvas.width = value / aspectRatio;
+        break;
+      case 'naturalRatio':
+        canvas.width = imageData[2] * value;
+        canvas.height = imageData[3] * value;
+        break;
+      default:
+        canvas.width = this.cropBoxWidth * value;
+        canvas.height = this.cropBoxHeight * value;
     }
     ctx.drawImage(
       this.img,
@@ -342,26 +356,18 @@
     );
     return canvas
   };
-  /**
-   * 注册初始化成功的回调
-   * @param {Function(cropper)} callback 初始化成功后会按顺序执行回调（通过实例化时的options.onReady注册的优先级最高），初始化成功后注册的回调会直接执行
-   */
   MCropper.prototype.onReady = function onReady (callback) {
-    if(this.ready === true) {
+    if (this.ready === true) {
       callback(this);
     } else {
-      this.callbacks.push(callback);
+      this.callbackfns.push(callback);
     }
   };
-  /**
-   * 回收资源，移除画布
-   */
   MCropper.prototype.destroy = function destroy () {
-    this.callbacks = [];
-    this.alloyFinger.destroy();
-    window.removeEventListener('resize', this.resizeListener);
+    this.img.src = this.img.onload = null;
+    this.alloyFingerListener && this.alloyFingerListener.destroy();
     this.container.removeChild(this.canvas);
-    this.container.$$mcropper = null;
+    delete this.container[NAMESPACE];
   };
 
   function limitRange(val, ref) {
@@ -383,6 +389,29 @@
       }
     });
     return object
+  }
+
+  function getCenterOfGravity(points) {
+    var len = points.length;
+    var area = 0;
+    var x = 0;
+    var y = 0;
+
+    for (var index = 1; index <= len; index++) {
+      var ref = points[index % len];
+      var nx = ref[0];
+      var ny = ref[1];
+      var ref$1 = points[index - 1];
+      var lx = ref$1[0];
+      var ly = ref$1[1];
+      var temp = (nx * ly - ny * lx) / 2;
+      area += temp;
+      x += temp * (nx + lx) / 3;
+      y += temp * (ny + ly) / 3;
+    }
+    x = x / area;
+    y = y / area;
+    return [x, y]
   }
 
   MCropper.defaults = defaults;

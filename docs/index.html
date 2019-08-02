@@ -71,30 +71,25 @@
       <div id="container"></div>
     </div>
     <script src="./alloy_finger.js" charset="utf-8"></script>
-    <script src="./mcropper.js" charset="utf-8"></script>
+    <script src="./mcropper.js?2.0.0" charset="utf-8"></script>
     <script type="text/javascript">
       var fileInput = document.getElementById('fileInput')
-      var confirm = document.getElementById('confirm')
-      var preview = document.getElementById('preview')
-      var container = document.getElementById('container')
+      var cropBtn = document.getElementById('confirm')
+      var previewImg = document.getElementById('preview')
+      var cropperContainer = document.getElementById('container')
       fileInput.addEventListener('change', function () {
         var src = window.URL.createObjectURL(this.files[0])
         fileInput.value = '' // clear file
-        container.style.display = 'block'
-        new MCropper(container, src, {
-          onReady: function (cropper) {
-            confirm.addEventListener('click', crop)
-            confirm.style.display = 'block'
-            function crop () {
-              // cropper.crop().toBlob(function (blob) {
-              //   preview.src = window.URL.createObjectURL(blob)
-              // }, 'image/jpeg', 0.9)
-              preview.src = cropper.crop().toDataURL('image/jpeg')
-              container.style.display = 'none'
-              confirm.removeEventListener('click', crop)
-              confirm.style.display = 'none'
-              cropper.destroy()
-            }
+        cropperContainer.style.display = 'block'
+        var mcropper = new MCropper(cropperContainer, src, function(cropper) {
+          cropBtn.addEventListener('click', crop)
+          cropBtn.style.display = 'block'
+          function crop () {
+            previewImg.src = cropper.crop().toDataURL('image/jpeg')
+            cropperContainer.style.display = 'none'
+            cropBtn.style.display = 'none'
+            cropBtn.removeEventListener('click', crop)
+            cropper.destroy()
           }
         })
       })

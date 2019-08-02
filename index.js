@@ -1,61 +1,50 @@
 import AlloyFinger from 'alloyfinger'
 
-const NAMESPACE = '$$mcropper'
+const NAMESPACE = '__MCropper__'
 
 const defaults = {
-  containRatio: 0.92,
   aspectRatio: 1,
+  containRatio: 0.92,
   modalOpacity: 0.6,
   borderColor: 'rgba(51, 153, 255, 0.75)',
   borderWidth: 1,
   borderOrigin: 'out',
-  responsive: true,
-  restore: true,
 }
 
 export default class MCropper {
-  /**
-   * @param {Element} container 一个宽度和高度都不为0的可定位元素
-   * @param {String} src img src
-   * @param {Object} [options]
-   * @param {Number} [options.width] 裁剪框宽度(px)
-   * @param {Number} [options.height] 裁剪框高度(px)
-   * @param {Number} [options.aspectRatio=1] 宽高比，当没有同时指定宽高时起效
-   * @param {Number} [options.containRatio=0.92] 当没有指定宽高时，配合aspectRatio自动计算尺寸，以使其宽度和高度适应内容区域，该值控制缩比例(ratio <= 1)
-   * @param {Boolean} [options.circle] 是否启用圆形裁剪框，取裁剪框宽度为直径
-   * @param {Function(cropper)} [options.onReady] 初始化成功的回调
-   * @param {String} [options.borderColor='rgba(51, 153, 255, 0.75)'] 裁剪框边框颜色
-   * @param {Number} [options.borderWidth=1] 裁剪框边框宽度(px)
-   * @param {Number} [options.borderOrigin=out] 裁剪框边框线绘制位置，out：框的外面，in：框的里面，middle：框的里外各绘制一半
-   * @param {Number} [options.modalOpacity=0.6] 蒙层不透明度
-   * @param {Boolean} [options.responsive=true] 是否在window.resize后重新渲染
-   * @param {Boolean} [options.restore=true] 是否在window.resize重新渲染后保持当前裁剪区域不变
-   */
-  constructor(container, src, options) {
-    if(container[NAMESPACE]) {
+  constructor(container, src, options, callbackfn) {
+    if (container[NAMESPACE]) {
       container[NAMESPACE].destroy()
     }
-
     container[NAMESPACE] = this
     this.container = container
 
+    if (typeof src === 'object') {
+      options = src
+      src = null
+    } else if (typeof options === 'function') {
+      callbackfn = options
+      options = null
+    }
     this.options = assign({}, MCropper.defaults, options)
+
+    // try to calculate fixed size of crop box if width or height has provided
     const {
       width,
       height,
       aspectRatio
     } = this.options
-    if(width || height) {
-      if(width) {
+    if (width || height) {
+      if (width) {
         this.cropBoxWidth = width
       }
-      if(height) {
+      if (height) {
         this.cropBoxHeight = height
       }
-      if(!this.cropBoxHeight) {
+      if (!this.cropBoxHeight) {
         this.cropBoxHeight = this.cropBoxWidth / aspectRatio
       }
-      if(!this.cropBoxWidth) {
+      if (!this.cropBoxWidth) {
         this.cropBoxWidth = this.cropBoxHeight * aspectRatio
       }
     }
@@ -83,12 +72,18 @@ export default class MCropper {
         this.cropBoxWidth + spread,
         this.cropBoxHeight + spread
       )
-
-    this.callbacks = []
-    this.options.onReady && this.callbacks.push(this.options.onReady)
+    this.container.appendChild(this.canvas)
 
     this.img = new Image()
-    if(src.substring(0, 4).toLowerCase() === 'http') {
+    src && this.setSrc(src, callbackfn)
+  }
+  setSrc(src, callbackfn) {
+    this.alloyFingerListener && this.alloyFingerListener.destroy()
+    this.ready = false
+    this.src = src
+    this.callbackfns = []
+    callbackfn && this.callbackfns.push(callbackfn)
+    if (src.substring(0, 4).toLowerCase() === 'http') {
       // resolve base64 uri bug in safari:'cross-origin image load denied by cross-origin resource sharing policy.'
       this.img.crossOrigin = 'anonymous'
     }
@@ -96,21 +91,16 @@ export default class MCropper {
     this.img.src = src
   }
   init() {
-    this.container.appendChild(this.canvas)
-    this.initData()
-    this.renderCenter()
-    this.addFingerListener()
-    if(this.options.responsive) {
-      this.resizeListener = this.resize.bind(this)
-      window.addEventListener('resize', this.resizeListener)
-    }
     this.ready = true
+    this.calculateImgData()
+    this.renderCenter()
     let callback
-    while ((callback = this.callbacks.shift())) {
+    while ((callback = this.callbackfns.shift())) {
       callback(this)
     }
+    this.addFingerListener()
   }
-  initData() {
+  calculateImgData() {
     const containerWidth = this.canvas.width = this.container.clientWidth
     const containerHeight = this.canvas.height = this.container.clientHeight
     const {
@@ -119,8 +109,8 @@ export default class MCropper {
       aspectRatio,
       containRatio,
     } = this.options
-    if(!width && !height) {
-      if(aspectRatio > containerWidth / containerHeight) {
+    if (!width && !height) {
+      if (aspectRatio > containerWidth / containerHeight) {
         this.cropBoxWidth = containerWidth * containRatio
         this.cropBoxHeight = this.cropBoxWidth / aspectRatio
       } else {
@@ -128,8 +118,8 @@ export default class MCropper {
         this.cropBoxWidth = this.cropBoxHeight * aspectRatio
       }
     }
-    this.imgOriginX = (containerWidth - this.cropBoxWidth) / 2
-    this.imgOriginY = (containerHeight - this.cropBoxHeight) / 2
+    this.cropBoxOriginX = (containerWidth - this.cropBoxWidth) / 2
+    this.cropBoxOriginY = (containerHeight - this.cropBoxHeight) / 2
     this.imgMinScale = Math.max(
       this.cropBoxWidth / this.img.naturalWidth,
       this.cropBoxHeight / this.img.naturalHeight
@@ -138,14 +128,14 @@ export default class MCropper {
   renderCenter() {
     const imgScale = this.imgMinScale
     this.render(
-      this.imgOriginX - (this.img.naturalWidth * imgScale - this.cropBoxWidth) / 2,
-      this.imgOriginY - (this.img.naturalHeight * imgScale - this.cropBoxHeight) / 2,
+      this.cropBoxOriginX - (this.img.naturalWidth * imgScale - this.cropBoxWidth) / 2,
+      this.cropBoxOriginY - (this.img.naturalHeight * imgScale - this.cropBoxHeight) / 2,
       imgScale
     )
   }
-  render(imgX, imgY, imgScale) {
+  render(imgOriginX, imgOriginY, imgScale) {
     this.renderCover()
-    this.renderImage(imgX, imgY, imgScale)
+    this.renderImage(imgOriginX, imgOriginY, imgScale)
   }
   renderCover() {
     const {
@@ -189,137 +179,142 @@ export default class MCropper {
     ctx.stroke()
     ctx.restore()
   }
-  renderImage(imgX, imgY, imgScale) {
+  renderImage(imgOriginX, imgOriginY, imgScale) {
     imgScale = Math.max(imgScale, this.imgMinScale)
-    if(imgScale !== this.imgScale) {
-      // 如果要缩放，先计算新的imgStartCoordsRange，再修正imgStartCoords保证不越界
+
+    // 根据缩放计算一个img起点坐标范围来限制img起点坐标的取值范围，以保证图片始终比裁剪框大
+    if (imgScale !== this.imgScale) {
       this.imgScale = imgScale
       this.imgWidth = this.img.naturalWidth * imgScale
       this.imgHeight = this.img.naturalHeight * imgScale
       const imgMaxOffsetX = this.imgWidth - this.cropBoxWidth
       const imgMaxOffsetY = this.imgHeight - this.cropBoxHeight
-      this.imgXRange = [this.imgOriginX - imgMaxOffsetX, this.imgOriginX]
-      this.imgYRange = [this.imgOriginY - imgMaxOffsetY, this.imgOriginY]
+      this.imgOriginXRange = [this.cropBoxOriginX - imgMaxOffsetX, this.cropBoxOriginX]
+      this.imgOriginYRange = [this.cropBoxOriginY - imgMaxOffsetY, this.cropBoxOriginY]
     }
-    this.imgX = limitRange(imgX, this.imgXRange)
-    this.imgY = limitRange(imgY, this.imgYRange)
+    this.imgOriginX = limitRange(imgOriginX, this.imgOriginXRange)
+    this.imgOriginY = limitRange(imgOriginY, this.imgOriginYRange)
 
     const ctx = this.ctx
     ctx.save()
     ctx.globalCompositeOperation = 'destination-over'
     ctx.drawImage(
       this.img,
-      this.imgX,
-      this.imgY,
+      this.imgOriginX,
+      this.imgOriginY,
       this.imgWidth,
       this.imgHeight
     )
     ctx.restore()
   }
-  zoomImage(scale, [relativeXOfImage, relativeYOfImage], [relativeXOfContainer, relativeYOfContainer]) {
+
+  /**
+   * 缩放（始终以多指触点的中点缩放，所以可能会同时带有平移）
+   * @param {number} scale
+   * @param {[number, number]} param1 缩放前的中点在image坐标系的坐标
+   * @param {[number, number]} param2 缩放后的中点在container坐标系的坐标
+   */
+  zoomImage(scale, [ix, iy], [cx, cy]) {
     scale = Math.max(this.imgMinScale, scale)
-    // 以缩放后的coordsOfImage和coordsOfContainer重合为前提计算的新的imgStartCoords
     const zoom = scale / this.imgScale
-    relativeXOfImage *= zoom
-    relativeYOfImage *= zoom
-    this.render(relativeXOfContainer - relativeXOfImage, relativeYOfContainer - relativeYOfImage, scale)
+    this.render(cx - ix * zoom, cy - iy * zoom, scale)
+  }
+  pagePointToContainerPoint([pageX, pageY]) {
+    const {
+      top,
+      left
+    } = this.container.getBoundingClientRect()
+    return [pageX - left, pageY - top]
+  }
+  containerPointToImagePoint([cx, cy]) {
+    return [cx - this.imgOriginX, cy - this.imgOriginY]
   }
   addFingerListener() {
-    let tempScale = 0
-    let tempRelativeCoordsOfImage = [0, 0]
-    // 获取两指之间的中点在container中的坐标
-    const getRelativeCoordsOfContainerOnCenter = e => {
-      const [t1, t2] = e.touches
-      const pageX = (t1.pageX + t2.pageX) / 2
-      const pageY = (t1.pageY + t2.pageY) / 2
-      const {
-        top,
-        left
-      } = this.container.getBoundingClientRect()
-      return [pageX - left, pageY - top]
+    let initialImgScale
+    let centerOfGravityOnImage
+    const getCenterOfGravityOnContainer = event => {
+      const points = [].slice.apply(event.touches).map(touch => [touch.pageX, touch.pageY])
+      let centerOfGravity
+      if (points.length === 1) {
+        centerOfGravity = points[0]
+      } else if (points.length === 2) {
+        centerOfGravity = [(points[0][0] + points[1][0]) / 2, (points[0][1] + points[1][1]) / 2]
+      } else {
+        centerOfGravity = getCenterOfGravity(points)
+      }
+      return this.pagePointToContainerPoint(centerOfGravity)
     }
-    // 将在container坐标系上的坐标换算到img
-    const updateTempRelativeCoordsOfImage = ([relativeXOfContainer, relativeYOfContainer]) => {
-      tempRelativeCoordsOfImage = [
-        relativeXOfContainer - this.imgX,
-        relativeYOfContainer - this.imgY
-      ]
+    const updateCenterOfGravityOnImage = containerPoint => {
+      centerOfGravityOnImage = this.containerPointToImagePoint(containerPoint)
     }
-    this.alloyFinger = new AlloyFinger(this.canvas, {
+    this.alloyFingerListener = new AlloyFinger(this.canvas, {
       multipointStart: e => {
-        tempScale = this.imgScale
-        updateTempRelativeCoordsOfImage(getRelativeCoordsOfContainerOnCenter(e))
+        initialImgScale = this.imgScale
+        updateCenterOfGravityOnImage(getCenterOfGravityOnContainer(e))
       },
       pinch: e => {
-        const relativeCoordsOfContainer = getRelativeCoordsOfContainerOnCenter(e)
-        this.zoomImage(tempScale * e.zoom, tempRelativeCoordsOfImage, relativeCoordsOfContainer)
-        updateTempRelativeCoordsOfImage(relativeCoordsOfContainer)
+        const newCenterOfGravityOnContainer = getCenterOfGravityOnContainer(e)
+        this.zoomImage(initialImgScale * e.zoom, centerOfGravityOnImage, newCenterOfGravityOnContainer)
+        updateCenterOfGravityOnImage(newCenterOfGravityOnContainer)
       },
       pressMove: e => {
         e.preventDefault()
-        this.render(this.imgX + e.deltaX, this.imgY + e.deltaY, this.imgScale)
+        this.render(this.imgOriginX + e.deltaX, this.imgOriginY + e.deltaY, this.imgScale)
       }
     })
   }
-  resize() {
-    if(this.options.restore) {
+  resize(reset) {
+    if (reset) {
+      this.calculateImgData()
+      this.renderCenter()
+    } else {
       const [
-        naturalImgStartX,
-        naturalImgStartY
+        sx,
+        sy
       ] = this.getImageData()
       const zoom = this.imgScale / this.imgMinScale
-      this.initData()
+      this.calculateImgData()
       const imgScale = this.imgMinScale * zoom
       this.render(
-        this.imgOriginX - naturalImgStartX * imgScale,
-        this.imgOriginY - naturalImgStartY * imgScale,
+        this.cropBoxOriginX - sx * imgScale,
+        this.cropBoxOriginY - sy * imgScale,
         imgScale
       )
-    } else {
-      this.initData()
-      this.renderCenter()
     }
   }
   getImageData() {
     const scale = this.imgScale
     return [
-      (this.imgOriginX - this.imgX) / scale,
-      (this.imgOriginY - this.imgY) / scale,
-      this.cropBoxWidth / scale,
-      this.cropBoxHeight / scale
+      (this.cropBoxOriginX - this.imgOriginX) / scale, // 被剪切图像的裁剪起点的 x 坐标
+      (this.cropBoxOriginY - this.imgOriginY) / scale, // 被剪切图像的裁剪起点的 y 坐标
+      this.cropBoxWidth / scale, // 被剪切图像的宽度
+      this.cropBoxHeight / scale // 被剪切图像的高度
     ]
   }
-  /**
-   * 裁剪，下列可选参数有且只有一个发挥作用，由上往下优先级降低
-   * @param {Object|Number} [options=1] 为数字时作用和options.ratio一样
-   * @param {Number} [options.width] 给出宽度，自动计算高度
-   * @param {Number} [options.height] 给出高度，自动计算宽度
-   * @param {Number} [options.naturalRatio] 基于图片原始尺寸的输出倍率
-   * @param {Number} [options.ratio] 基于裁剪框尺寸的输出倍率
-   * @return {Canvas}
-   */
-  crop(options) {
-    if(!this.ready) {
+  crop(value = 1, attribute = 'ratio') {
+    if (!this.ready) {
       throw new Error('can\'t crop before ready')
     }
-    options = options || 1
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     const aspectRatio = this.cropBoxWidth / this.cropBoxHeight
     const imageData = this.getImageData()
-    if(options.width) {
-      canvas.width = options.width
-      canvas.height = options.width * aspectRatio
-    } else if(options.height) {
-      canvas.height = options.height
-      canvas.width = options.width / aspectRatio
-    } else if(options.naturalRatio) {
-      canvas.width = imageData[2] * options.naturalRatio
-      canvas.height = imageData[3] * options.naturalRatio
-    } else {
-      const outputRatio = options.outputRatio || Number(options)
-      canvas.width = this.cropBoxWidth * outputRatio
-      canvas.height = this.cropBoxHeight * outputRatio
+    switch (attribute) {
+      case 'width':
+        canvas.width = value
+        canvas.height = value * aspectRatio
+        break;
+      case 'height':
+        canvas.height = value
+        canvas.width = value / aspectRatio
+        break;
+      case 'naturalRatio':
+        canvas.width = imageData[2] * value
+        canvas.height = imageData[3] * value
+        break;
+      default:
+        canvas.width = this.cropBoxWidth * value
+        canvas.height = this.cropBoxHeight * value
     }
     ctx.drawImage(
       this.img,
@@ -334,26 +329,18 @@ export default class MCropper {
     )
     return canvas
   }
-  /**
-   * 注册初始化成功的回调
-   * @param {Function(cropper)} callback 初始化成功后会按顺序执行回调（通过实例化时的options.onReady注册的优先级最高），初始化成功后注册的回调会直接执行
-   */
   onReady(callback) {
-    if(this.ready === true) {
+    if (this.ready === true) {
       callback(this)
     } else {
-      this.callbacks.push(callback)
+      this.callbackfns.push(callback)
     }
   }
-  /**
-   * 回收资源，移除画布
-   */
   destroy() {
-    this.callbacks = []
-    this.alloyFinger.destroy()
-    window.removeEventListener('resize', this.resizeListener)
+    this.img.src = this.img.onload = null
+    this.alloyFingerListener && this.alloyFingerListener.destroy()
     this.container.removeChild(this.canvas)
-    this.container.$$mcropper = null
+    delete this.container[NAMESPACE]
   }
 }
 
@@ -363,13 +350,32 @@ function limitRange(val, [min, max]) {
 
 function assign(object, ...sources) {
   sources.forEach(source => {
-    for (var variable in source) {
+    for (const variable in source) {
       if (source.hasOwnProperty(variable)) {
         object[variable] = source[variable]
       }
     }
   })
   return object
+}
+
+function getCenterOfGravity(points) {
+  const len = points.length
+  let area = 0
+  let x = 0
+  let y = 0
+
+  for (let index = 1; index <= len; index++) {
+    const [nx, ny] = points[index % len]
+    const [lx, ly] = points[index - 1]
+    const temp = (nx * ly - ny * lx) / 2
+    area += temp
+    x += temp * (nx + lx) / 3
+    y += temp * (ny + ly) / 3
+  }
+  x = x / area
+  y = y / area
+  return [x, y]
 }
 
 MCropper.defaults = defaults

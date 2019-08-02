@@ -1,15 +1,3 @@
-# mcropper
-> 要在移动端实现上传头像，本来采用`cropperjs`，开发完在手机上一跑，哭了。百度之，试用了一下`AlloyCrop`，流畅但是可定制性不强，遂改源码。改着改着就面目全非了，那就尝试发布第一款npm包吧。
-
-## Features
-* 只支持移动端
-* 裁剪框大小自适应
-* 初始化时图片有一边尺寸与裁剪框相等，另一边大于或等于裁剪框且居中
-* 缩放图片时，双指中点对应图片的位置会跟随双指中点移动
-* 无论移动或缩放，裁剪框始终包含在图片内
-
-## Getting started
-```typescript
 export default class MCropper {
   /** 实例化时options参数的默认值，可以通过修改该对象的值影响后续的实例化 */
   static defaults: MCropperOption
@@ -32,10 +20,21 @@ export default class MCropper {
    * @param {number} [options.borderOrigin='out'] 裁剪框边框线绘制位置，out：框的外面，in：框的里面，middle：框的里外各绘制一半
    * @param {number} [options.modalOpacity=0.6] 蒙层不透明度
    * @param {ReadyCallback} [callbackfn] 有src时，该图片加载成功后执行回调
+   * @example
+   * new MCropper(cropperContainer, '/picture.png', function(cropper) {
+   *   cropBtn.addEventListener('click', crop)
+   *   function crop () {
+   *     previewImg.src = cropper.crop().toDataURL('image/jpeg')
+   *     previewImg.style.display = 'block'
+   *     cropperContainer.style.display = 'none'
+   *     cropBtn.removeEventListener('click', crop)
+   *     cropper.destroy()
+   *   }
+   * })
    */
-  constructor(container: Element, src?: string, options?: MCropperOption, callbackfn?: ReadyCallback);
-  constructor(container: Element, src: string, callbackfn: ReadyCallback);
-  constructor(container: Element, options: MCropperOption);
+  constructor(container: Element, src?: string, options?: MCropperOption, callbackfn?: ReadyCallback)
+  constructor(container: Element, src: string, callbackfn: ReadyCallback)
+  constructor(container: Element, options: MCropperOption)
 
   /**
    * 裁剪
@@ -98,32 +97,3 @@ export interface MCropperOption {
   borderWidth?: number
   borderOrigin?: 'out' | 'in' | 'middle'
 }
-```
-
-## Example
-```js
-new MCropper(cropperContainer, '/picture.png', function(cropper) {
-  cropBtn.addEventListener('click', crop)
-  function crop () {
-    previewImg.src = cropper.crop().toDataURL('image/jpeg')
-    previewImg.style.display = 'block'
-    cropperContainer.style.display = 'none'
-    cropBtn.removeEventListener('click', crop)
-    cropper.destroy()
-  }
-})
-```
-
-## Preview
-![Preview](https://dgmpk.github.io/mcropper/public/preview.jpg)
-
-## Demo
-[https://dgmpk.github.io/mcropper/](https://dgmpk.github.io/mcropper/)
-
-![QR code](https://dgmpk.github.io/mcropper/public/QR-code.png)
-
-## Dependencies
-* [AlloyFinger](https://github.com/AlloyTeam/AlloyFinger)
-
-## License
-This content is released under the [MIT](http://opensource.org/licenses/MIT) License.

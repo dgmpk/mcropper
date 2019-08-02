@@ -13,3 +13,15 @@
 ## Bug Fixes
 
 * 修复不传options报错的Bug
+
+# 2.0.0 (2019-08-02)
+
+## Code Refactoring
+
+## Features
+
+* 添加TypeScript支持
+* 调整类实例化参数：src变为可选；移除options.onReady并调整为末尾的可选参数；移除options.responsive和options.restore以及各自对应的功能
+* 新增实例方法setSrc：实例化可以修改src
+* 调整实例方法crop：参数优化
+* 调整实例方法resize：新增reset参数，代替类实例化参数options.restore，起相反作用

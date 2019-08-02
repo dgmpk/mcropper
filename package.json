@@ -1,10 +1,11 @@
 {
   "name": "mcropper",
-  "version": "1.1.1",
+  "version": "2.0.0",
   "description": "image cropper for mobile",
   "main": "dist/mcropper.common.js",
   "module": "dist/mcropper.esm.js",
   "unpkg": "dist/mcropper.js",
+  "typings": "index.d.ts",
   "scripts": {
     "build": "rollup -c",
     "compress": "uglifyjs dist/mcropper.js -o dist/mcropper.min.js -c -m --comments /^!/",
@@ -18,7 +19,8 @@
   },
   "files": [
     "dist/*.js",
-    "bg.png"
+    "bg.png",
+    "index.d.ts"
   ],
   "keywords": [
     "crop",
